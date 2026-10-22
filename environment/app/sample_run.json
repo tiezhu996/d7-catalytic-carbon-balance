@@ -1,0 +1,51 @@
+{
+  "run_id": "MSR-CSM-330-1to1-1.0-01",
+  "feed": {
+    "methanol_mol_per_h": 1.0,
+    "internal_standard_mol_per_h": 0.1
+  },
+  "catalyst": {
+    "active_metal_molar_mass_g_per_mol": 63.546,
+    "catalyst_mass_g": 0.75,
+    "diluent_mass_g": 0.25,
+    "metal_loading_wt_percent": 12.0,
+    "metal_dispersion_fraction": 0.18
+  },
+  "gc": {
+    "calibrations": {
+      "methanol": [
+        0.02,
+        1.12,
+        0.018
+      ],
+      "CO2": [
+        0.01,
+        0.98,
+        0.006
+      ],
+      "CO": [
+        0.008,
+        1.05,
+        0.004
+      ],
+      "CH4": [
+        0.005,
+        1.1,
+        0.002
+      ],
+      "DME": [
+        0.012,
+        0.72,
+        0.01
+      ]
+    },
+    "outlet_peak_areas": {
+      "N2": 25000.0,
+      "methanol": 189706.706377,
+      "CO2": 90888.008032,
+      "CO": 5174.717586,
+      "CH4": 742.719806,
+      "DME": 300.0
+    }
+  }
+}
