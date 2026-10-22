@@ -8,6 +8,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # 不写 USER：Harbor 的保活进程随默认用户运行，评分前清理 runner 进程时不能把它一起结束。
 RUN useradd --create-home --uid 1000 runner
 
+# 容器内包管理器统一走 IPv4，避免部分网络只返回 IPv6 地址时卡住。
+RUN printf 'Acquire::ForceIPv4 "true";\nAcquire::Retries "3";\n' > /etc/apt/apt.conf.d/99harbor-network
+
 WORKDIR /app
 COPY app/ /app/
 RUN chown -R runner:runner /app
