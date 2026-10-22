@@ -109,8 +109,24 @@ def fit_model(summaries: list[dict], model: str) -> tuple[list[float], float]:
     return best_parameters, best_value
 
 
+def fit_robust(summaries: list[dict], model: str) -> tuple[list[float], float]:
+    parameters, value = fit_model(summaries, model)
+    values = [abs(item) for item in residuals(summaries, parameters, model)]
+    ordered = sorted(values)
+    median = ordered[len(ordered) // 2]
+    limit = max(0.005, 3.0 * median)
+    kept = [
+        run
+        for run, residual in zip(summaries, residuals(summaries, parameters, model))
+        if abs(residual) <= limit
+    ]
+    if len(kept) >= 3 and len(kept) < len(summaries):
+        return fit_model(kept, model)
+    return parameters, value
+
+
 def estimate(summaries: list[dict], catalyst: dict) -> dict:
-    chosen, model = choose_model(summaries, fit_model)
+    chosen, model = choose_model(summaries, fit_robust)
     reference_rate = math.exp(chosen[0])
     sites_mol_per_g = float(catalyst["active_sites_mmol_per_g"]) / 1000.0
     order = output_order(summaries, chosen[2])

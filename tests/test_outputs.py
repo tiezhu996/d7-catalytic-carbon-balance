@@ -181,6 +181,8 @@ def make_payload(group, variant):
     for index, spec in enumerate(specs):
         conversion = forward_conversion(spec, params, model)
         measured_methanol = spec["feed_methanol_mol_per_s"] * (1.0 - conversion) * noise[index % len(noise)]
+        if group == "integral" and variant == 1 and index == 2:
+            measured_methanol *= 0.82
         measured_conversion = (spec["feed_methanol_mol_per_s"] - measured_methanol) / spec["feed_methanol_mol_per_s"]
         converted_carbon = spec["feed_methanol_mol_per_s"] * measured_conversion
         amounts = {"methanol": measured_methanol, "N2": N2_FLOW}
