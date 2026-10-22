@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import math
 
+from deactivation import choose_model
+from order import output_order
+from reactor import differential_rate
+
 R_GAS = 8.314462618
 REFERENCE_TEMPERATURE_K = 623.15
 
@@ -35,7 +39,7 @@ def estimate(summaries: list[dict], catalyst: dict) -> dict:
     response = []
     for run in summaries:
         feed = run["feed_methanol_mol_per_s"]
-        rate = feed * run["conversion"] / run["catalyst_mass_g"]
+        rate = differential_rate(feed, run["conversion"], run["catalyst_mass_g"])
         response.append(math.log(max(rate, 1e-30)))
         design.append([
             1.0,
@@ -55,7 +59,7 @@ def estimate(summaries: list[dict], catalyst: dict) -> dict:
     coefficients = _solve(normal, rhs) or [math.log(2e-4), 0.0, 90.0, 0.05]
     rref = math.exp(max(-20.0, min(2.0, coefficients[0])))
     ea = max(1.0, min(300.0, coefficients[2] * R_GAS / 1000.0))
-    order = max(0.0, min(4.0, coefficients[1]))
+    order = output_order(summaries, max(0.0, min(4.0, coefficients[1])))
     kd = max(0.0, min(10.0, coefficients[3]))
     sites = float(catalyst["active_sites_mmol_per_g"]) / 1000.0
     average_rate = sum(
@@ -65,7 +69,7 @@ def estimate(summaries: list[dict], catalyst: dict) -> dict:
     return {
         "activation_energy_kj_mol": ea,
         "reaction_order": order,
-        "deactivation_model": "first_order",
+        "deactivation_model": choose_model(summaries),
         "deactivation_constant_per_h": kd,
         "rate_constant_at_reference_mol_g_s": rref,
         "initial_tof_s_inverse": average_rate / sites,

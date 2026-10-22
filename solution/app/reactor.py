@@ -47,3 +47,7 @@ def reactor_modulus(conversion: float, run: dict, parameters: list[float], model
         rate = reaction_rate(x, run, parameters, model)
         total += weight / max(rate, 1e-30)
     return total * step / 3.0
+
+
+def differential_rate(feed_methanol_mol_per_s: float, conversion: float, catalyst_mass_g: float) -> float:
+    return feed_methanol_mol_per_s * conversion / catalyst_mass_g
