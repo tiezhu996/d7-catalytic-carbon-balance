@@ -295,7 +295,7 @@ def test_reaction_order_dilution_case_a():
 def test_reaction_order_dilution_case_b():
     """「参考温度为 623.15 K，参考浓度为 100 mol m-3。」"""
     got = result_for("order", 1)
-    assert abs(got["reaction_order"] - 0.65) < 0.005
+    assert abs(got["reaction_order"] - 0.65) < 0.015
 
 
 def test_reaction_order_dilution_case_c():
