@@ -152,6 +152,11 @@ def test_outputs_json_contract():
         "tof_s_inverse",
     }
     assert set(got["selectivity_percent"]) == {"CO2", "CO", "CH4", "DME"}
+    assert isinstance(got["run_id"], str)
+    for field in ("conversion_percent", "carbon_balance_percent", "methanol_converted_mmol_per_h", "tof_s_inverse"):
+        assert isinstance(got[field], (int, float)) and not isinstance(got[field], bool)
+    for value in got["selectivity_percent"].values():
+        assert isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def test_wrong_argument_count_exits_2():
