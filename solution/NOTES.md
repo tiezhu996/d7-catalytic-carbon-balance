@@ -13,7 +13,10 @@
 - `solution/app/main.py`：入口、字段和四舍五入。
 - `solution/app/calibration.py`：出口峰面积反算摩尔流量。
 - `solution/app/gcdata.py`：转化率和碳平衡。
-- `solution/app/kinetics.py`：积分床层方程、Levenberg-Marquardt 参数反演、失活模型选择、TOF 换算。
+- `solution/app/reactor.py`：积分床层方程和速率计算。
+- `solution/app/order.py`：反应级数输出口径。
+- `solution/app/deactivation.py`：一级/二级失活模型选择。
+- `solution/app/kinetics.py`：Levenberg-Marquardt 参数反演和汇总。
 - `solution/solve.sh`：安装参考解，并通过 `HTB_SKIP` 用精确片段退回三个难点。
 
 ## 关键步骤
