@@ -1,51 +1,163 @@
 {
-  "run_id": "MSR-CSM-330-1to1-1.0-01",
-  "feed": {
-    "methanol_mol_per_h": 1.0,
-    "internal_standard_mol_per_h": 0.1
-  },
+  "run_id": "MSR-KIN-SAMPLE",
+  "reference_temperature_k": 623.15,
+  "reference_concentration_mol_m3": 100.0,
   "catalyst": {
-    "active_metal_molar_mass_g_per_mol": 63.546,
-    "catalyst_mass_g": 0.75,
-    "diluent_mass_g": 0.25,
-    "metal_loading_wt_percent": 12.0,
-    "metal_dispersion_fraction": 0.18
+    "active_sites_mmol_per_g": 0.18
   },
-  "gc": {
-    "calibrations": {
-      "methanol": [
-        0.02,
-        1.12,
-        0.018
-      ],
-      "CO2": [
-        0.01,
-        0.98,
-        0.006
-      ],
-      "CO": [
-        0.008,
-        1.05,
-        0.004
-      ],
-      "CH4": [
-        0.005,
-        1.1,
-        0.002
-      ],
-      "DME": [
-        0.012,
-        0.72,
-        0.01
-      ]
+  "gc_calibrations": {
+    "methanol": [
+      0.02,
+      1.1,
+      0.015
+    ],
+    "CO2": [
+      0.01,
+      0.98,
+      0.006
+    ],
+    "CO": [
+      0.008,
+      1.05,
+      0.004
+    ],
+    "CH4": [
+      0.005,
+      1.1,
+      0.002
+    ],
+    "DME": [
+      0.012,
+      0.72,
+      0.01
+    ]
+  },
+  "runs": [
+    {
+      "run_id": "integral-0-1",
+      "temperature_k": 590.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 140635.53800805716,
+        "CO2": 25738.169321198824,
+        "CO": 3394.0667189696496,
+        "CH4": 1797.4926478833302,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
     },
-    "outlet_peak_areas": {
-      "N2": 25000.0,
-      "methanol": 189706.706377,
-      "CO2": 90888.008032,
-      "CO": 5174.717586,
-      "CH4": 742.719806,
-      "DME": 300.0
+    {
+      "run_id": "integral-0-2",
+      "temperature_k": 600.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 129721.46386338421,
+        "CO2": 33186.89001281603,
+        "CO": 4320.5492967530945,
+        "CH4": 2282.4014471463256,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
+    },
+    {
+      "run_id": "integral-0-3",
+      "temperature_k": 610.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 117338.25407354654,
+        "CO2": 41749.51601501315,
+        "CO": 5381.77040154615,
+        "CH4": 2837.7089756931987,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
+    },
+    {
+      "run_id": "integral-0-4",
+      "temperature_k": 620.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 103546.17273590076,
+        "CO2": 51429.72015648859,
+        "CO": 6576.652103158888,
+        "CH4": 3462.8020656952813,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
+    },
+    {
+      "run_id": "integral-0-5",
+      "temperature_k": 630.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 88938.26929639687,
+        "CO2": 61852.86872784741,
+        "CO": 7857.5652873116505,
+        "CH4": 4132.719332677065,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
+    },
+    {
+      "run_id": "integral-0-6",
+      "temperature_k": 640.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 73871.34777525126,
+        "CO2": 72793.90553522362,
+        "CO": 9195.884833884884,
+        "CH4": 4832.458580351952,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
+    },
+    {
+      "run_id": "integral-0-7",
+      "temperature_k": 650.0,
+      "time_on_stream_h": 0.0,
+      "inlet_methanol_concentration_mol_m3": 20.0,
+      "volumetric_expansion_factor": 0.8,
+      "feed_methanol_mol_per_s": 6e-05,
+      "catalyst_mass_g": 0.5,
+      "internal_standard_mol_per_s": 1e-05,
+      "outlet_peak_areas": {
+        "methanol": 59164.68445801081,
+        "CO2": 83666.97857487896,
+        "CO": 10519.656480144651,
+        "CH4": 5524.389097973862,
+        "DME": 300.0,
+        "N2": 25000.0
+      }
     }
-  }
+  ]
 }

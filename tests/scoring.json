@@ -5,41 +5,41 @@
     "test_outputs.py::test_wrong_argument_count_exits_2"
   ],
   "tests": {
-    "test_outputs.py::test_quadratic_calibration_conversion_moderate": {
+    "test_outputs.py::test_activation_energy_integral_case_a": {
       "weight": 0.12,
-      "rationale": "难点1 二次校准反算：中等转化率下必须解出非负二次根，占总分 0.12"
+      "rationale": "难点1 积分床层修正：中等温度跨度与高转化率，占总分 0.12"
     },
-    "test_outputs.py::test_quadratic_calibration_conversion_low": {
+    "test_outputs.py::test_activation_energy_integral_case_b": {
       "weight": 0.11,
-      "rationale": "难点1 二次校准反算：低转化率且截距不可忽略，占总分 0.11"
+      "rationale": "难点1 积分床层修正：更高活化能和膨胀因子，占总分 0.11"
     },
-    "test_outputs.py::test_internal_standard_cancels_global_sensitivity": {
+    "test_outputs.py::test_activation_energy_integral_case_c": {
       "weight": 0.11,
-      "rationale": "难点1 二次校准反算：内标归一抵消检测器整体灵敏度漂移，占总分 0.11"
+      "rationale": "难点1 积分床层修正：低活化能温度序列，占总分 0.11"
     },
-    "test_outputs.py::test_selectivity_dme_has_two_carbons": {
+    "test_outputs.py::test_reaction_order_dilution_case_a": {
       "weight": 0.11,
-      "rationale": "难点2 含碳产物衡算：DME 的碳摩尔流量按分子式计，占总分 0.11"
+      "rationale": "难点2 稀释条件反应级数：入口浓度变化而进料流量固定，占总分 0.11"
     },
-    "test_outputs.py::test_carbon_balance_includes_unreacted_methanol_and_dme_carbon": {
+    "test_outputs.py::test_reaction_order_dilution_case_b": {
       "weight": 0.11,
-      "rationale": "难点2 含碳产物衡算：碳平衡包含未反应甲醇与全部产物，占总分 0.11"
+      "rationale": "难点2 稀释条件反应级数：低反应级数，占总分 0.11"
     },
-    "test_outputs.py::test_second_dme_case_uses_formula_carbon_number": {
+    "test_outputs.py::test_reaction_order_dilution_case_c": {
       "weight": 0.11,
-      "rationale": "难点2 含碳产物衡算：换一组物料组成复核 DME 选择性，占总分 0.11"
+      "rationale": "难点2 稀释条件反应级数：高反应级数，占总分 0.11"
     },
-    "test_outputs.py::test_tof_excludes_inert_diluent_from_catalyst_mass": {
+    "test_outputs.py::test_second_order_deactivation_model_case_a": {
       "weight": 0.11,
-      "rationale": "难点3 表面活性位点归一化：惰性稀释剂不得进入催化剂质量，占总分 0.11"
+      "rationale": "难点3 失活模型辨识：二级失活模型与失活常数，占总分 0.11"
     },
-    "test_outputs.py::test_tof_scales_with_metal_dispersion": {
+    "test_outputs.py::test_initial_tof_case_b": {
       "weight": 0.11,
-      "rationale": "难点3 表面活性位点归一化：TOF 与金属分散度成反比，占总分 0.11"
+      "rationale": "难点3 失活模型辨识：零时刻转换频率，占总分 0.11"
     },
-    "test_outputs.py::test_tof_uses_active_metal_molar_mass": {
+    "test_outputs.py::test_second_order_deactivation_model_case_c": {
       "weight": 0.11,
-      "rationale": "难点3 表面活性位点归一化：活性金属摩尔质量改变位点数，占总分 0.11"
+      "rationale": "难点3 失活模型辨识：长周期慢失活，占总分 0.11"
     }
   }
 }

@@ -1,6 +1,6 @@
-"""催化反应色谱数据汇总入口。
+"""催化反应动力学数据汇总入口。
 
-用法：python3 /app/main.py <run.json>
+用法：python3 /app/main.py <runs.json>
 """
 
 from __future__ import annotations
@@ -9,8 +9,8 @@ import json
 import sys
 from decimal import Decimal, ROUND_HALF_UP
 
-from activity import turnover_frequency
-from balances import outlet_molar_flows, summarize_balance
+from gcdata import summarize_payload
+from kinetics import estimate
 
 
 def rounded(value: float, places: int) -> float:
@@ -19,28 +19,25 @@ def rounded(value: float, places: int) -> float:
 
 
 def analyze(payload: dict) -> dict:
-    outlet = outlet_molar_flows(payload)
-    summary = summarize_balance(payload, outlet)
-    tof = turnover_frequency(summary["methanol_converted_mol_per_h"], payload["catalyst"])
-    selectivity = {
-        species: rounded(value, 4)
-        for species, value in summary["selectivity_percent"].items()
-    }
+    summaries = summarize_payload(payload)
+    result = estimate(summaries, payload["catalyst"])
     return {
         "run_id": str(payload["run_id"]),
-        "conversion_percent": rounded(summary["conversion_percent"], 4),
-        "carbon_balance_percent": rounded(summary["carbon_balance_percent"], 4),
-        "selectivity_percent": selectivity,
-        "methanol_converted_mmol_per_h": rounded(
-            summary["methanol_converted_mol_per_h"] * 1000.0, 4
+        "activation_energy_kj_mol": rounded(result["activation_energy_kj_mol"], 3),
+        "reaction_order": rounded(result["reaction_order"], 4),
+        "deactivation_model": result["deactivation_model"],
+        "deactivation_constant_per_h": rounded(result["deactivation_constant_per_h"], 4),
+        "rate_constant_at_reference_mol_g_s": rounded(result["rate_constant_at_reference_mol_g_s"], 9),
+        "initial_tof_s_inverse": rounded(result["initial_tof_s_inverse"], 6),
+        "mean_carbon_balance_percent": rounded(
+            sum(run["carbon_balance_percent"] for run in summaries) / len(summaries), 4
         ),
-        "tof_s_inverse": rounded(tof, 6),
     }
 
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
-        print("usage: python3 /app/main.py <run.json>", file=sys.stderr)
+        print("usage: python3 /app/main.py <runs.json>", file=sys.stderr)
         return 2
     with open(argv[1], "r", encoding="utf-8") as handle:
         payload = json.load(handle)

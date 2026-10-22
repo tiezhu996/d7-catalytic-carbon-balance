@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import math
+
 
 def amount_ratio_from_area(area_ratio: float, coefficients: list[float]) -> float:
-    """把物种与内标的峰面积比换算成摩尔比。"""
-    intercept = coefficients[0] if len(coefficients) > 0 else 0.0
-    slope = coefficients[1] if len(coefficients) > 1 else 0.0
-    if area_ratio <= intercept or slope <= 0.0:
+    """按相对响应曲线计算摩尔比。"""
+    c0, c1, c2 = (float(x) for x in coefficients)
+    if area_ratio <= c0:
         return 0.0
-    ratio = (area_ratio - intercept) / slope
-    return max(0.0, ratio)
+    target = area_ratio - c0
+    if c2 == 0.0:
+        return max(0.0, target / c1)
+    disc = c1 * c1 + 4.0 * c2 * target
+    return max(0.0, (-c1 + math.sqrt(max(0.0, disc))) / (2.0 * c2))

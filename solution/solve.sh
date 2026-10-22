@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 参考解：安装 solution/app/ 下的完整实现。
-# HTB_SKIP 用精确片段把指定难点退回原始写法，供留一法和变异矩阵使用。
+# HTB_SKIP 用精确片段把指定难点退回原始估算写法，供留一法和变异矩阵使用。
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -8,63 +8,45 @@ for source in "$HERE"/app/*.py; do
     install -m 0644 "$source" "/app/$(basename "$source")"
 done
 
-SKIP="${HTB_SKIP:-}" /usr/local/bin/python3 - /app/calibration.py /app/balances.py /app/activity.py <<'PY'
+SKIP="${HTB_SKIP:-}" /usr/local/bin/python3 - /app/kinetics.py <<'PY'
 import os
 import sys
 from pathlib import Path
 
 REVERT = {
     "difficulty_1": [
-        ("/app/calibration.py", '''    intercept = float(coefficients[0])
-    slope = float(coefficients[1])
-    curvature = float(coefficients[2])
-    if area_ratio <= intercept:
+        ('''    if conversion <= 0.0:
         return 0.0
-    if slope < 0.0 or curvature < 0.0:
-        raise ValueError("calibration coefficients must be non-negative")
-
-    target = area_ratio - intercept
-    if curvature == 0.0:
-        if slope == 0.0:
-            raise ValueError("calibration slope must be positive")
-        return max(0.0, target / slope)
-
-    discriminant = slope * slope + 4.0 * curvature * target
-    if discriminant < 0.0:
-        raise ValueError("calibration has no real positive root")
-    root = (-slope + math.sqrt(discriminant)) / (2.0 * curvature)
-    if root < -1e-12:
-        raise ValueError("calibration has no non-negative root")
-    return max(0.0, root)''', '''    intercept = coefficients[0] if len(coefficients) > 0 else 0.0
-    slope = coefficients[1] if len(coefficients) > 1 else 0.0
-    if area_ratio <= intercept or slope <= 0.0:
+    intervals = 24
+    step = conversion / intervals
+    total = 0.0
+    for index in range(intervals + 1):
+        x = index * step
+        weight = 1.0 if index in (0, intervals) else (4.0 if index % 2 else 2.0)
+        rate = reaction_rate(x, run, parameters, model, concentration_basis)
+        total += weight / max(rate, 1e-30)
+    return total * step / 3.0''',
+         '''    if conversion <= 0.0:
         return 0.0
-    ratio = (area_ratio - intercept) / slope
-    return max(0.0, ratio)'''),
+    rate = reaction_rate(0.0, run, parameters, model, concentration_basis)
+    return conversion / max(rate, 1e-30)'''),
     ],
     "difficulty_2": [
-        ("/app/balances.py", '''    carbon_products = sum(
-        CARBON_NUMBER[species] * amount for species, amount in products.items()
-    )''', "    carbon_products = sum(products.values())"),
-        ("/app/balances.py", '''            species: 100.0 * CARBON_NUMBER[species] * amount / carbon_products''',
-         '''            species: 100.0 * amount / carbon_products'''),
+        ('    order = reported_order(summaries, chosen[2], "axial")',
+         '    order = reported_order(summaries, chosen[2], "feed_flow")'),
     ],
     "difficulty_3": [
-        ("/app/activity.py", '''    catalyst_mass_g = float(catalyst["catalyst_mass_g"])
-    loading = float(catalyst["metal_loading_wt_percent"]) / 100.0
-    molar_mass = float(catalyst["active_metal_molar_mass_g_per_mol"])
-    dispersion = float(catalyst["metal_dispersion_fraction"])
-
-    total_metal_mol = catalyst_mass_g * loading / molar_mass
-    surface_metal_mol = total_metal_mol * dispersion
-    if surface_metal_mol <= 0.0:
-        raise ValueError("surface active metal amount must be positive")
-    return converted_mol_per_h / 3600.0 / surface_metal_mol''', '''    bed_mass_g = float(catalyst["catalyst_mass_g"]) + float(catalyst["diluent_mass_g"])
-    loading = float(catalyst["metal_loading_wt_percent"]) / 100.0
-    metal_mol = bed_mass_g * loading / 63.546
-    if metal_mol <= 0.0:
-        raise ValueError("active metal amount must be positive")
-    return converted_mol_per_h / 3600.0 / metal_mol'''),
+        ('''    first_parameters, first_error = fit_model(summaries, "first_order")
+    model = "first_order"
+    chosen = first_parameters
+    times = [run["time_on_stream_h"] for run in summaries]
+    if max(times) - min(times) > 1.0:
+        second_parameters, second_error = fit_model(summaries, "second_order")
+        if second_error < 0.8 * first_error:
+            model = "second_order"
+            chosen = second_parameters''',
+         '''    chosen, _ = fit_model(summaries, "first_order")
+    model = "first_order"'''),
     ],
 }
 
@@ -73,15 +55,15 @@ unknown = sorted(set(skip) - set(REVERT))
 if unknown:
     sys.exit(f"HTB_SKIP 里有未知难点：{unknown}")
 
+path = Path("/app/kinetics.py")
 for key in skip:
-    for filename, fixed, original in REVERT[key]:
-        path = Path(filename)
+    for fixed, original in REVERT[key]:
         text = path.read_text(encoding="utf-8")
         count = text.count(fixed)
         if count != 1:
-            sys.exit(f"{key} 在 {filename} 的修复片段出现 {count} 次，应为 1")
+            sys.exit(f"{key} 的修复片段出现 {count} 次，应为 1")
         path.write_text(text.replace(fixed, original), encoding="utf-8")
-        print(f"留一法：{key} 修改 {filename}", file=sys.stderr)
+        print(f"留一法：{key} 退回原始写法", file=sys.stderr)
 PY
 
 chown runner:runner /app/*.py 2>/dev/null || true

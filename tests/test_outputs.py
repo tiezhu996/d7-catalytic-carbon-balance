@@ -1,11 +1,12 @@
-"""甲醇重整色谱汇总的验收测试。
+"""催化动力学参数反演的验收测试。
 
-每个 `test_` 的 docstring 用「」引用题面原句。计分测试分别覆盖非线性校准、
-含碳产物衡算和活性金属位点三个独立难点；期望值来自 `research/verify_gc.py`
-的独立复算，不调用参考实现生成。
+计分用例分成三组：高转化率下的床层积分修正、稀释条件下的反应级数、
+以及长周期记录中的失活模型与初始 TOF。期望参数由本文件中的独立正演生成器设定，
+不调用参考实现拟合。
 """
 
 import json
+import math
 import os
 import signal
 import subprocess
@@ -22,32 +23,23 @@ CANDIDATE_ENV = {
     "TZ": "UTC",
 }
 CALL_TIMEOUT_SEC = 30
-
-QUADRATIC = {
-    "methanol": [0.02, 1.12, 0.018],
+R_GAS = 8.314462618
+T_REF = 623.15
+C_REF = 100.0
+N2_FLOW = 1.0e-5
+N2_AREA = 25000.0
+CALIBRATIONS = {
+    "methanol": [0.02, 1.10, 0.015],
     "CO2": [0.01, 0.98, 0.006],
     "CO": [0.008, 1.05, 0.004],
     "CH4": [0.005, 1.10, 0.002],
     "DME": [0.012, 0.72, 0.010],
 }
-LINEAR = {
-    "methanol": [0.02, 1.15, 0.0],
-    "CO2": [0.01, 1.00, 0.0],
-    "CO": [0.008, 1.05, 0.0],
-    "CH4": [0.005, 1.10, 0.0],
-    "DME": [0.015, 0.68, 0.0],
-}
-BASE_CATALYST = {
-    "active_metal_molar_mass_g_per_mol": 63.546,
-    "catalyst_mass_g": 0.75,
-    "diluent_mass_g": 0.25,
-    "metal_loading_wt_percent": 12.0,
-    "metal_dispersion_fraction": 0.18,
-}
+PRODUCT_CARBON = {"CO2": 0.85, "CO": 0.10, "CH4": 0.05, "DME": 0.0}
+CARBON_NUMBER = {"CO2": 1, "CO": 1, "CH4": 1, "DME": 2}
 
 
 def run_candidate(*args, timeout=CALL_TIMEOUT_SEC):
-    """以 runner 身份运行候选入口；超时结束整个进程组并抛出 TimeoutError。"""
     as_root = os.getuid() == 0
     proc = subprocess.Popen(
         [PYTHON, ENTRY, *[str(a) for a in args]],
@@ -70,44 +62,162 @@ def run_candidate(*args, timeout=CALL_TIMEOUT_SEC):
     return subprocess.CompletedProcess(proc.args, proc.returncode, out, err)
 
 
-def make_payload(
-    run_id,
-    feed_methanol,
-    outlet_amounts,
-    calibrations,
-    catalyst=None,
-    n2_flow=0.1,
-    n2_area=25000.0,
-    sensitivity=1.0,
-):
-    """按已知出口摩尔流量构造与校准曲线一致的峰面积。"""
-    peaks = {"N2": n2_area * sensitivity}
-    for species, coefficients in calibrations.items():
-        molar_ratio = outlet_amounts.get(species, 0.0) / n2_flow
-        area_ratio = (
-            coefficients[0]
-            + coefficients[1] * molar_ratio
-            + coefficients[2] * molar_ratio * molar_ratio
+def activity(time_h, constant, model):
+    if model == "first_order":
+        return math.exp(-constant * time_h)
+    return 1.0 / (1.0 + constant * time_h)
+
+
+def forward_rate(conversion, spec, params, model):
+    ea, order, kd, reference_rate = params
+    inlet = spec["inlet_methanol_concentration_mol_m3"]
+    expansion = spec["volumetric_expansion_factor"]
+    concentration = inlet * (1.0 - conversion) / (1.0 + expansion * conversion)
+    arrhenius = math.exp(-ea * 1000.0 / R_GAS * (1.0 / spec["temperature_k"] - 1.0 / T_REF))
+    return (
+        reference_rate
+        * arrhenius
+        * activity(spec["time_on_stream_h"], kd, model)
+        * (concentration / C_REF) ** order
+    )
+
+
+def modulus(conversion, spec, params, model):
+    intervals = 32
+    step = conversion / intervals
+    total = 0.0
+    for index in range(intervals + 1):
+        x = index * step
+        weight = 1.0 if index in (0, intervals) else (4.0 if index % 2 else 2.0)
+        total += weight / forward_rate(x, spec, params, model)
+    return total * step / 3.0
+
+
+def forward_conversion(spec, params, model):
+    target = spec["catalyst_mass_g"] / spec["feed_methanol_mol_per_s"]
+    low, high = 0.0, 0.999
+    for _ in range(50):
+        middle = (low + high) / 2.0
+        if modulus(middle, spec, params, model) < target:
+            low = middle
+        else:
+            high = middle
+    return (low + high) / 2.0
+
+
+def peak_area(amount, coefficients):
+    ratio = amount / N2_FLOW
+    area_ratio = coefficients[0] + coefficients[1] * ratio + coefficients[2] * ratio * ratio
+    return area_ratio * N2_AREA
+
+
+def make_payload(group, variant):
+    if group == "integral":
+        presets = {
+            0: (dict(ea=92.0, order=1.0, kd=1.0e-12, rate=4.0e-4),
+                [590.0, 600.0, 610.0, 620.0, 630.0, 640.0, 650.0], 20.0, 0.8, 6.0e-5, 0.5),
+            1: (dict(ea=118.0, order=0.9, kd=1.0e-12, rate=8.0e-4),
+                [600.0, 610.0, 620.0, 630.0, 640.0, 650.0], 14.0, 0.5, 5.0e-5, 0.6),
+            2: (dict(ea=74.0, order=1.1, kd=1.0e-12, rate=2.5e-4),
+                [585.0, 595.0, 605.0, 615.0, 625.0, 635.0], 28.0, 1.0, 7.0e-5, 0.45),
+        }
+        true, temperatures, concentration, expansion, flow, mass = presets[variant]
+        specs = [
+            dict(
+                temperature_k=value,
+                time_on_stream_h=0.0,
+                inlet_methanol_concentration_mol_m3=concentration,
+                volumetric_expansion_factor=expansion,
+                feed_methanol_mol_per_s=flow,
+                catalyst_mass_g=mass,
+            )
+            for value in temperatures
+        ]
+        model = "first_order"
+    elif group == "order":
+        presets = {
+            0: (dict(ea=88.0, order=1.4, kd=1.0e-12, rate=2.0e-4), [2.0, 3.0, 5.0, 8.0, 12.0, 18.0, 25.0], 0.015, 0.4),
+            1: (dict(ea=96.0, order=0.65, kd=1.0e-12, rate=3.0e-4), [1.5, 2.5, 4.0, 7.0, 11.0, 17.0, 24.0], 0.010, 0.2),
+            2: (dict(ea=81.0, order=1.8, kd=1.0e-12, rate=1.2e-4), [3.0, 5.0, 8.0, 12.0, 16.0, 22.0, 30.0], 0.030, 0.6),
+        }
+        true, concentrations, mass, expansion = presets[variant]
+        specs = [
+            dict(
+                temperature_k=T_REF,
+                time_on_stream_h=0.0,
+                inlet_methanol_concentration_mol_m3=value,
+                volumetric_expansion_factor=expansion,
+                feed_methanol_mol_per_s=1.0e-5,
+                catalyst_mass_g=mass,
+            )
+            for value in concentrations
+        ]
+        model = "first_order"
+    else:
+        presets = {
+            0: (dict(ea=90.0, order=0.0, kd=0.18, rate=2.5e-4), [0.0, 2.0, 4.0, 6.0, 8.0, 10.0, 12.0, 16.0, 20.0], 0.02),
+            1: (dict(ea=102.0, order=0.0, kd=0.45, rate=5.0e-4), [0.0, 1.0, 2.0, 3.0, 5.0, 7.0, 10.0], 0.012),
+            2: (dict(ea=77.0, order=0.0, kd=0.06, rate=2.2e-4), [0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0], 0.025),
+        }
+        true, times, mass = presets[variant]
+        temperatures = [610.0, 620.0, 630.0]
+        concentrations = [5.0, 10.0, 15.0]
+        specs = [
+            dict(
+                temperature_k=temperatures[index % len(temperatures)],
+                time_on_stream_h=value,
+                inlet_methanol_concentration_mol_m3=8.0e-6,
+                volumetric_expansion_factor=0.0,
+                feed_methanol_mol_per_s=8.0e-6,
+                catalyst_mass_g=mass,
+            )
+            for index, value in enumerate(times)
+        ]
+        model = "second_order"
+
+    params = (true["ea"], true["order"], true["kd"], true["rate"])
+    noise = [1.0001, 0.99985, 1.00005, 0.9999, 1.00015, 0.9998, 1.0000, 0.99995, 1.00005]
+    runs = []
+    for index, spec in enumerate(specs):
+        conversion = forward_conversion(spec, params, model)
+        measured_methanol = spec["feed_methanol_mol_per_s"] * (1.0 - conversion) * noise[index % len(noise)]
+        measured_conversion = (spec["feed_methanol_mol_per_s"] - measured_methanol) / spec["feed_methanol_mol_per_s"]
+        converted_carbon = spec["feed_methanol_mol_per_s"] * measured_conversion
+        amounts = {"methanol": measured_methanol, "N2": N2_FLOW}
+        for species, fraction in PRODUCT_CARBON.items():
+            amounts[species] = converted_carbon * fraction / CARBON_NUMBER[species]
+        peaks = {
+            species: peak_area(amounts[species], coefficients)
+            for species, coefficients in CALIBRATIONS.items()
+        }
+        peaks["N2"] = N2_AREA
+        runs.append(
+            {
+                "run_id": f"{group}-{variant}-{index + 1}",
+                "temperature_k": spec["temperature_k"],
+                "time_on_stream_h": spec["time_on_stream_h"],
+                "inlet_methanol_concentration_mol_m3": spec["inlet_methanol_concentration_mol_m3"],
+                "volumetric_expansion_factor": spec["volumetric_expansion_factor"],
+                "feed_methanol_mol_per_s": spec["feed_methanol_mol_per_s"],
+                "catalyst_mass_g": spec["catalyst_mass_g"],
+                "internal_standard_mol_per_s": N2_FLOW,
+                "outlet_peak_areas": peaks,
+            }
         )
-        peaks[species] = area_ratio * n2_area * sensitivity
     return {
-        "run_id": run_id,
-        "feed": {
-            "methanol_mol_per_h": feed_methanol,
-            "internal_standard_mol_per_h": n2_flow,
-        },
-        "catalyst": dict(BASE_CATALYST if catalyst is None else catalyst),
-        "gc": {
-            "calibrations": calibrations,
-            "outlet_peak_areas": peaks,
-        },
+        "run_id": f"kinetics-{group}-{variant}",
+        "reference_temperature_k": T_REF,
+        "reference_concentration_mol_m3": C_REF,
+        "catalyst": {"active_sites_mmol_per_g": 0.18},
+        "gc_calibrations": CALIBRATIONS,
+        "runs": runs,
     }
 
 
 def analyze(payload):
-    folder = Path(tempfile.mkdtemp(prefix="msr-"))
+    folder = Path(tempfile.mkdtemp(prefix="kinetics-"))
     folder.chmod(0o755)
-    case = folder / "run.json"
+    case = folder / "runs.json"
     case.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     case.chmod(0o644)
     proc = run_candidate(case)
@@ -115,48 +225,36 @@ def analyze(payload):
     return json.loads(proc.stdout)
 
 
-def case_with(calibrations, feed=1.0, outlet=None, catalyst=None, n2_area=25000.0, sensitivity=1.0):
-    amounts = {
-        "methanol": 0.5,
-        "CO2": 0.10,
-        "CO": 0.05,
-        "CH4": 0.05,
-        "DME": 0.10,
-    }
-    if outlet is not None:
-        amounts = dict(outlet)
-    return analyze(
-        make_payload(
-            "hidden-case",
-            feed,
-            amounts,
-            calibrations,
-            catalyst=catalyst,
-            n2_area=n2_area,
-            sensitivity=sensitivity,
-        )
-    )
+def result_for(group, variant):
+    return analyze(make_payload(group, variant))
 
 
 # ---------- gate：入口与结构契约，不计分 ----------
 
 def test_outputs_json_contract():
     """「程序向标准输出写一个 JSON 对象。对象只含以下字段：」"""
-    got = case_with(LINEAR)
+    got = result_for("order", 0)
     assert set(got) == {
         "run_id",
-        "conversion_percent",
-        "carbon_balance_percent",
-        "selectivity_percent",
-        "methanol_converted_mmol_per_h",
-        "tof_s_inverse",
+        "activation_energy_kj_mol",
+        "reaction_order",
+        "deactivation_model",
+        "deactivation_constant_per_h",
+        "rate_constant_at_reference_mol_g_s",
+        "initial_tof_s_inverse",
+        "mean_carbon_balance_percent",
     }
-    assert set(got["selectivity_percent"]) == {"CO2", "CO", "CH4", "DME"}
     assert isinstance(got["run_id"], str)
-    for field in ("conversion_percent", "carbon_balance_percent", "methanol_converted_mmol_per_h", "tof_s_inverse"):
+    assert got["deactivation_model"] in {"first_order", "second_order"}
+    for field in (
+        "activation_energy_kj_mol",
+        "reaction_order",
+        "deactivation_constant_per_h",
+        "rate_constant_at_reference_mol_g_s",
+        "initial_tof_s_inverse",
+        "mean_carbon_balance_percent",
+    ):
         assert isinstance(got[field], (int, float)) and not isinstance(got[field], bool)
-    for value in got["selectivity_percent"].values():
-        assert isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def test_wrong_argument_count_exits_2():
@@ -166,88 +264,65 @@ def test_wrong_argument_count_exits_2():
     assert proc.stdout.strip() == ""
 
 
-# ---------- 难点 1：二次校准曲线反算 ----------
+# ---------- 难点 1：高转化率下的床层积分修正 ----------
 
-def test_quadratic_calibration_conversion_moderate():
-    """「每个数组的三个数依次是常数项、一次项和二次项。」"""
-    outlet = {"methanol": 0.44, "CO2": 0.20, "CO": 0.02, "CH4": 0.01, "DME": 0.05}
-    got = case_with(QUADRATIC, feed=0.8, outlet=outlet)
-    assert abs(got["conversion_percent"] - 45.0) < 0.0002
-
-
-def test_quadratic_calibration_conversion_low():
-    """「每个数组的三个数依次是常数项、一次项和二次项。」"""
-    outlet = {"methanol": 1.05, "CO2": 0.06, "CO": 0.02, "CH4": 0.005, "DME": 0.01}
-    got = case_with(QUADRATIC, feed=1.2, outlet=outlet)
-    assert abs(got["conversion_percent"] - 12.5) < 0.0002
+def test_activation_energy_integral_case_a():
+    """「用全部记录共同反演参考温度下的反应速率常数、活化能、反应级数和失活常数。」"""
+    got = result_for("integral", 0)
+    assert abs(got["activation_energy_kj_mol"] - 92.0) < 0.6
 
 
-def test_internal_standard_cancels_global_sensitivity():
-    """「每个数组的三个数依次是常数项、一次项和二次项。」"""
-    outlet = {"methanol": 0.44, "CO2": 0.20, "CO": 0.02, "CH4": 0.01, "DME": 0.05}
-    low = case_with(QUADRATIC, feed=0.8, outlet=outlet, n2_area=12000.0, sensitivity=0.65)
-    high = case_with(QUADRATIC, feed=0.8, outlet=outlet, n2_area=180000.0, sensitivity=1.8)
-    assert abs(low["conversion_percent"] - 45.0) < 0.0002
-    assert abs(high["conversion_percent"] - 45.0) < 0.0002
+def test_activation_energy_integral_case_b():
+    """「用全部记录共同反演参考温度下的反应速率常数、活化能、反应级数和失活常数。」"""
+    got = result_for("integral", 1)
+    assert abs(got["activation_energy_kj_mol"] - 118.0) < 1.2
 
 
-# ---------- 难点 2：含碳产物衡算 ----------
-
-def test_selectivity_dme_has_two_carbons():
-    """「各值是相应产物碳摩尔流量占全部含碳产物碳摩尔流量之和的百分数，保留 4 位小数。」"""
-    got = case_with(LINEAR)
-    assert abs(got["selectivity_percent"]["CO2"] - 25.0) < 0.0002
-    assert abs(got["selectivity_percent"]["DME"] - 50.0) < 0.0002
+def test_activation_energy_integral_case_c():
+    """「用全部记录共同反演参考温度下的反应速率常数、活化能、反应级数和失活常数。」"""
+    got = result_for("integral", 2)
+    assert abs(got["activation_energy_kj_mol"] - 74.0) < 0.9
 
 
-def test_carbon_balance_includes_unreacted_methanol_and_dme_carbon():
-    """「出口甲醇与全部含碳产物的碳摩尔流量之和，除以进料甲醇碳摩尔流量后乘 100，保留 4 位小数。」"""
-    got = case_with(LINEAR)
-    assert abs(got["carbon_balance_percent"] - 90.0) < 0.0002
+# ---------- 难点 2：稀释条件下的反应级数 ----------
+
+def test_reaction_order_dilution_case_a():
+    """「参考温度为 623.15 K，参考浓度为 100 mol m-3。」"""
+    got = result_for("order", 0)
+    assert abs(got["reaction_order"] - 1.4) < 0.025
 
 
-def test_second_dme_case_uses_formula_carbon_number():
-    """「二甲醚按 DME（C2H6O）计。」"""
-    outlet = {"methanol": 0.45, "CO2": 0.12, "CO": 0.03, "CH4": 0.02, "DME": 0.08}
-    got = case_with(LINEAR, feed=0.9, outlet=outlet)
-    assert abs(got["selectivity_percent"]["DME"] - 48.4848) < 0.0002
-    assert abs(got["carbon_balance_percent"] - 86.6667) < 0.0002
+def test_reaction_order_dilution_case_b():
+    """「参考温度为 623.15 K，参考浓度为 100 mol m-3。」"""
+    got = result_for("order", 1)
+    assert abs(got["reaction_order"] - 0.65) < 0.025
 
 
-# ---------- 难点 3：表面活性金属位点归一化 ----------
-
-def test_tof_excludes_inert_diluent_from_catalyst_mass():
-    """「惰性稀释剂不计入活性金属量」"""
-    outlet = {"methanol": 0.5, "CO2": 0.10, "CO": 0.05, "CH4": 0.05, "DME": 0.10}
-    light = dict(BASE_CATALYST)
-    heavy = dict(BASE_CATALYST)
-    heavy["diluent_mass_g"] = 1.25
-    a = case_with(LINEAR, outlet=outlet, catalyst=light)
-    b = case_with(LINEAR, outlet=outlet, catalyst=heavy)
-    assert abs(a["tof_s_inverse"] - 0.544805) < 0.000002
-    assert abs(b["tof_s_inverse"] - 0.544805) < 0.000002
+def test_reaction_order_dilution_case_c():
+    """「参考温度为 623.15 K，参考浓度为 100 mol m-3。」"""
+    got = result_for("order", 2)
+    assert abs(got["reaction_order"] - 1.8) < 0.05
 
 
-def test_tof_scales_with_metal_dispersion():
-    """「表面活性金属占总活性金属的摩尔分数」"""
-    outlet = {"methanol": 0.5, "CO2": 0.10, "CO": 0.05, "CH4": 0.05, "DME": 0.10}
-    half = dict(BASE_CATALYST)
-    half["metal_dispersion_fraction"] = 0.09
-    full = dict(BASE_CATALYST)
-    full["metal_dispersion_fraction"] = 0.18
-    a = case_with(LINEAR, outlet=outlet, catalyst=half)
-    b = case_with(LINEAR, outlet=outlet, catalyst=full)
-    assert abs(a["tof_s_inverse"] - 1.089609) < 0.000002
-    assert abs(b["tof_s_inverse"] - 0.544805) < 0.000002
+# ---------- 难点 3：失活模型与初始活性 ----------
+
+def test_second_order_deactivation_model_case_a():
+    """「失活模型只允许填 first_order 或 second_order」"""
+    got = result_for("deactivation", 0)
+    assert got["deactivation_model"] == "second_order"
+    assert abs(got["deactivation_constant_per_h"] - 0.18) < 0.004
 
 
-def test_tof_uses_active_metal_molar_mass():
-    """「计算时用已转化甲醇的摩尔数除以催化剂表面活性金属摩尔数和反应时间」"""
-    outlet = {"methanol": 0.5, "CO2": 0.10, "CO": 0.05, "CH4": 0.05, "DME": 0.10}
-    copper = dict(BASE_CATALYST)
-    palladium = dict(BASE_CATALYST)
-    palladium["active_metal_molar_mass_g_per_mol"] = 106.42
-    a = case_with(LINEAR, outlet=outlet, catalyst=copper)
-    b = case_with(LINEAR, outlet=outlet, catalyst=palladium)
-    assert abs(a["tof_s_inverse"] - 0.544805) < 0.000002
-    assert abs(b["tof_s_inverse"] - 0.912380) < 0.000002
+def test_initial_tof_case_b():
+    """「参考温度、参考浓度和零时刻下的转换频率，单位为 s-1」"""
+    got = result_for("deactivation", 1)
+    expected = got["rate_constant_at_reference_mol_g_s"] / 0.00018
+    assert got["deactivation_model"] == "second_order"
+    assert abs(got["initial_tof_s_inverse"] - expected) / expected < 0.000002
+
+
+def test_second_order_deactivation_model_case_c():
+    """「失活模型只允许填 first_order 或 second_order」"""
+    got = result_for("deactivation", 2)
+    assert got["deactivation_model"] == "second_order"
+    assert abs(got["deactivation_constant_per_h"] - 0.06) < 0.002

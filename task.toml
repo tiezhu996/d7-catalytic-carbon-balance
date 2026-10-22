@@ -3,8 +3,8 @@ artifacts = []
 
 [task]
 name = "local/d7-catalytic-carbon-balance"
-description = "从气相色谱峰面积、相对校准和催化剂装填信息核算甲醇重整转化率、碳平衡、碳基选择性与表面位点转换频率"
-keywords = ["d7", "chemistry", "catalysis", "gas-chromatography", "carbon-balance", "turnover-frequency"]
+description = "从多组气相色谱记录反演甲醇重整的积分床层动力学参数、失活模型和零时刻转换频率"
+keywords = ["d7", "chemistry", "catalysis", "kinetics", "inverse-problem", "turnover-frequency"]
 [[task.authors]]
 name = "unknown"
 
@@ -13,7 +13,7 @@ author_name = "unknown"
 author_email = "unknown"
 difficulty = "expert"
 category = "chemistry"
-tags = ["chemistry", "catalysis", "gas-chromatography", "carbon-balance", "turnover-frequency"]
+tags = ["chemistry", "catalysis", "kinetics", "inverse-problem", "turnover-frequency"]
 # 审核器按字符串解析（"4h"、"90m"）；裸数字会被当成小时。_min 版本给平台表格用。
 expert_time_estimate = "4h"
 expert_time_estimate_min = 240
