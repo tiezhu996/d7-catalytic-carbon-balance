@@ -1,4 +1,4 @@
-"""固定床速率的快速估算。"""
+"""积分固定床反应器的速率计算。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,10 @@ def reaction_rate(conversion: float, run: dict, parameters: list[float], model: 
     activation_energy = parameters[1]
     order = parameters[2]
     deactivation_constant = math.exp(parameters[3])
-    concentration = run["feed_methanol_mol_per_s"]
+
+    inlet = run["inlet_methanol_concentration_mol_m3"]
+    expansion = run["volumetric_expansion_factor"]
+    concentration = inlet * (1.0 - conversion) / (1.0 + expansion * conversion)
     arrhenius = math.exp(
         -activation_energy * 1000.0
         / R_GAS
@@ -32,10 +35,18 @@ def reaction_rate(conversion: float, run: dict, parameters: list[float], model: 
 
 
 def reactor_modulus(conversion: float, run: dict, parameters: list[float], model: str) -> float:
+    """按活塞流设计方程计算 W/F_A0。"""
     if conversion <= 0.0:
         return 0.0
-    rate = reaction_rate(0.0, run, parameters, model)
-    return conversion / max(rate, 1e-30)
+    intervals = 24
+    step = conversion / intervals
+    total = 0.0
+    for index in range(intervals + 1):
+        x = index * step
+        weight = 1.0 if index in (0, intervals) else (4.0 if index % 2 else 2.0)
+        rate = reaction_rate(x, run, parameters, model)
+        total += weight / max(rate, 1e-30)
+    return total * step / 3.0
 
 
 def differential_rate(feed_methanol_mol_per_s: float, conversion: float, catalyst_mass_g: float) -> float:

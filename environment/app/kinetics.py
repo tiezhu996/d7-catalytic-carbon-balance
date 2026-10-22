@@ -1,4 +1,4 @@
-"""反应数据处理工具。"""
+"""积分固定床动力学参数反演。"""
 
 from __future__ import annotations
 
@@ -6,13 +6,23 @@ import math
 
 from deactivation import choose_model
 from order import output_order
-from reactor import differential_rate
-
-R_GAS = 8.314462618
-REFERENCE_TEMPERATURE_K = 623.15
+from reactor import reactor_modulus
 
 
-def _solve(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
+def residuals(summaries: list[dict], parameters: list[float], model: str) -> list[float]:
+    values = []
+    for run in summaries:
+        observed = run["catalyst_mass_g"] / run["feed_methanol_mol_per_s"]
+        predicted = reactor_modulus(run["conversion"], run, parameters, model)
+        values.append(math.log(max(predicted, 1e-30) / observed))
+    return values
+
+
+def objective(summaries: list[dict], parameters: list[float], model: str) -> float:
+    return sum(value * value for value in residuals(summaries, parameters, model))
+
+
+def solve_linear(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
     size = len(vector)
     rows = [list(matrix[i]) + [vector[i]] for i in range(size)]
     for column in range(size):
@@ -33,44 +43,77 @@ def _solve(matrix: list[list[float]], vector: list[float]) -> list[float] | None
     return [rows[i][size] for i in range(size)]
 
 
-def estimate(summaries: list[dict], catalyst: dict) -> dict:
-    """由转化率和操作条件给出一个快速参数估计。"""
-    design = []
-    response = []
-    for run in summaries:
-        feed = run["feed_methanol_mol_per_s"]
-        rate = differential_rate(feed, run["conversion"], run["catalyst_mass_g"])
-        response.append(math.log(max(rate, 1e-30)))
-        design.append([
-            1.0,
-            math.log(max(feed, 1e-30)),
-            1.0 / REFERENCE_TEMPERATURE_K - 1.0 / run["temperature_k"],
-            -run["time_on_stream_h"],
-        ])
-    normal = [[0.0] * 4 for _ in range(4)]
-    rhs = [0.0] * 4
-    for row, target in zip(design, response):
+def refine(summaries: list[dict], start: list[float], model: str) -> tuple[list[float], float]:
+    parameters = list(start)
+    damping = 1e-2
+    best = objective(summaries, parameters, model)
+    for _ in range(2):
+        base = residuals(summaries, parameters, model)
+        jacobian = []
+        epsilon = 1e-5
+        for column in range(4):
+            shifted = list(parameters)
+            shifted[column] += epsilon
+            trial = residuals(summaries, shifted, model)
+            jacobian.append([(trial[row] - base[row]) / epsilon for row in range(len(base))])
+        normal = [
+            [sum(jacobian[i][k] * jacobian[j][k] for k in range(len(base))) for j in range(4)]
+            for i in range(4)
+        ]
+        gradient = [sum(jacobian[i][k] * base[k] for k in range(len(base))) for i in range(4)]
         for i in range(4):
-            rhs[i] += row[i] * target
-            for j in range(4):
-                normal[i][j] += row[i] * row[j]
-    for i in range(4):
-        normal[i][i] += 1e-8
-    coefficients = _solve(normal, rhs) or [math.log(2e-4), 0.0, 90.0, 0.05]
-    rref = math.exp(max(-20.0, min(2.0, coefficients[0])))
-    ea = max(1.0, min(300.0, coefficients[2] * R_GAS / 1000.0))
-    order = output_order(summaries, max(0.0, min(4.0, coefficients[1])))
-    kd = max(0.0, min(10.0, coefficients[3]))
-    sites = float(catalyst["active_sites_mmol_per_g"]) / 1000.0
-    average_rate = sum(
+            normal[i][i] += damping * (normal[i][i] + 1e-9)
+        delta = solve_linear(normal, [-value for value in gradient])
+        if delta is None:
+            break
+        candidate = list(parameters)
+        for index in range(4):
+            candidate[index] += max(-2.0, min(2.0, delta[index]))
+        candidate[0] = max(-20.0, min(2.0, candidate[0]))
+        candidate[1] = max(1.0, min(300.0, candidate[1]))
+        candidate[2] = max(0.0, min(4.0, candidate[2]))
+        candidate[3] = max(-18.0, min(3.0, candidate[3]))
+        value = objective(summaries, candidate, model)
+        if value < best:
+            parameters, best = candidate, value
+            damping = max(1e-8, damping / 3.0)
+        else:
+            damping = min(1e8, damping * 5.0)
+        if max(abs(x) for x in delta) < 1e-7:
+            break
+    return parameters, best
+
+
+def initial_starts(summaries: list[dict]) -> list[list[float]]:
+    rates = [
         run["feed_methanol_mol_per_s"] * run["conversion"] / run["catalyst_mass_g"]
         for run in summaries
-    ) / len(summaries)
+    ]
+    value = sorted(math.log(max(rate, 1e-30)) for rate in rates)[len(rates) // 2]
+    return [[value - 0.7, 30.0, 0.0, math.log(0.01)]]
+
+def fit_model(summaries: list[dict], model: str) -> tuple[list[float], float]:
+    best_parameters = None
+    best_value = float("inf")
+    for start in initial_starts(summaries):
+        parameters, value = refine(summaries, start, model)
+        if value < best_value:
+            best_parameters, best_value = parameters, value
+    if best_parameters is None:
+        raise ValueError("kinetic fit did not converge")
+    return best_parameters, best_value
+
+
+def estimate(summaries: list[dict], catalyst: dict) -> dict:
+    chosen, model = choose_model(summaries, fit_model)
+    reference_rate = math.exp(chosen[0])
+    sites_mol_per_g = float(catalyst["active_sites_mmol_per_g"]) / 1000.0
+    order = output_order(summaries, chosen[2])
     return {
-        "activation_energy_kj_mol": ea,
+        "activation_energy_kj_mol": chosen[1],
         "reaction_order": order,
-        "deactivation_model": choose_model(summaries),
-        "deactivation_constant_per_h": kd,
-        "rate_constant_at_reference_mol_g_s": rref,
-        "initial_tof_s_inverse": average_rate / sites,
+        "deactivation_model": model,
+        "deactivation_constant_per_h": math.exp(chosen[3]),
+        "rate_constant_at_reference_mol_g_s": reference_rate,
+        "initial_tof_s_inverse": reference_rate / sites_mol_per_g,
     }
