@@ -31,8 +31,21 @@ REVERT = {
     return conversion / max(rate, 1e-30)'''),
     ],
     "difficulty_2": [
-        ("/app/order.py", '    return reported_order(summaries, fitted_order, "axial")',
-         '    return reported_order(summaries, fitted_order, "feed_flow")'),
+        ("/app/order.py", '''def output_order(summaries: list[dict], fitted_order: float) -> float:
+    return reported_order(summaries, fitted_order, "axial")''',
+         '''def output_order(summaries: list[dict], fitted_order: float) -> float:
+    covariate = [math.log(max(run["feed_methanol_mol_per_s"], 1e-30)) for run in summaries]
+    response = [
+        math.log(max(run["feed_methanol_mol_per_s"] * run["conversion"] / run["catalyst_mass_g"], 1e-30))
+        for run in summaries
+    ]
+    mean_x = sum(covariate) / len(covariate)
+    mean_y = sum(response) / len(response)
+    denominator = sum((value - mean_x) ** 2 for value in covariate)
+    if denominator < 1e-20:
+        return 0.0
+    slope = sum((x - mean_x) * (y - mean_y) for x, y in zip(covariate, response)) / denominator
+    return max(0.0, min(4.0, slope))'''),
     ],
     "difficulty_3": [
         ("/app/deactivation.py", '''    first_parameters, first_error = fit_model(summaries, "first_order")
