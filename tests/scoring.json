@@ -2,7 +2,12 @@
   "schema_version": 1,
   "gate_tests": [
     "test_outputs.py::test_outputs_json_contract",
-    "test_outputs.py::test_wrong_argument_count_exits_2"
+    "test_outputs.py::test_wrong_argument_count_exits_2",
+    "test_outputs.py::test_output_is_repeatable",
+    "test_outputs.py::test_no_network_imports",
+    "test_outputs.py::test_rounding_contract_is_present",
+    "test_outputs.py::test_deactivation_model_names_are_fixed",
+    "test_outputs.py::test_existing_tool_behavior_is_documented"
   ],
   "tests": {
     "test_outputs.py::test_activation_energy_integral_case_a": {

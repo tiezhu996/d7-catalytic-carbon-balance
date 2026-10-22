@@ -14,8 +14,6 @@ reaction_order：以入口甲醇浓度为基准的反应级数，保留 4 位小
 deactivation_model：只允许填 first_order 或 second_order。
 deactivation_constant_per_h：失活常数，单位 h-1，保留 4 位小数。
 rate_constant_at_reference_mol_g_s：参考温度、参考浓度和零时刻下的反应速率，单位 mol g-1 s-1，保留 9 位小数。
-initial_tof_s_inverse：参考温度、参考浓度和零时刻下的转换频率，单位为 s-1，保留 6 位小数。
-mean_carbon_balance_percent：各次记录碳平衡百分数的算术平均值，保留 4 位小数。
 
 用全部记录共同反演参考温度下的反应速率常数、活化能、反应级数和失活常数。参考温度为 623.15 K，参考浓度为 100 mol m-3。
 失活模型只允许填 first_order 或 second_order；两种模型分别按常见的一级和二级失活速率方程解释。
@@ -23,5 +21,7 @@ mean_carbon_balance_percent：各次记录碳平衡百分数的算术平均值�
 同一份输入重复运行应得到相同结果。
 多组记录的转化率由进料甲醇摩尔流量与出口甲醇摩尔流量之差除以进料甲醇摩尔流量得到，出口流量用氮气内标和对应物种的响应曲线反算。
 ```
+
+`initial_tof_s_inverse` 写参考温度、参考浓度和零时刻下的转换频率，单位为 s-1，保留 6 位小数。`mean_carbon_balance_percent` 写各次记录碳平衡百分数的算术平均值，保留 4 位小数。
 
 只使用 `/app` 内已有文件和 Python 标准库，不访问网络。输入至少有三条记录；温度、流量、浓度和催化剂质量为正数，体积膨胀因子非负。

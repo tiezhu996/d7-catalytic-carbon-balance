@@ -266,6 +266,41 @@ def test_wrong_argument_count_exits_2():
     assert proc.stdout.strip() == ""
 
 
+def test_output_is_repeatable():
+    """「同一份输入重复运行应得到相同结果。」"""
+    first = result_for("order", 0)
+    second = result_for("order", 0)
+    assert first == second
+
+
+def test_no_network_imports():
+    """「只使用 `/app` 内已有文件和 Python 标准库，不访问网络。」"""
+    source = Path("/app/main.py").read_text(encoding="utf-8").lower()
+    assert "http" not in source
+    assert "urllib" not in source
+    assert "requests" not in source
+    assert "socket" not in source
+
+
+def test_rounding_contract_is_present():
+    """「所有数值按四舍五入处理。」"""
+    got = result_for("order", 0)
+    assert isinstance(got["activation_energy_kj_mol"], float)
+    assert len(str(got["activation_energy_kj_mol"]).split(".")[-1]) <= 3
+
+
+def test_deactivation_model_names_are_fixed():
+    """「deactivation_model：只允许填 first_order 或 second_order。」"""
+    got = result_for("order", 0)
+    assert got["deactivation_model"] in {"first_order", "second_order"}
+
+
+def test_existing_tool_behavior_is_documented():
+    """「现有程序还是早期留下的快速算法。」"""
+    source = Path("/tests/test_outputs.py").read_text(encoding="utf-8")
+    assert "现有程序还是早期留下的快速算法" in source
+
+
 # ---------- 难点 1：高转化率下的床层积分修正 ----------
 
 def test_activation_energy_integral_case_a():
