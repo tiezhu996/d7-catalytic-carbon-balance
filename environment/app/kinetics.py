@@ -47,7 +47,7 @@ def refine(summaries: list[dict], start: list[float], model: str) -> tuple[list[
     parameters = list(start)
     damping = 1e-2
     best = objective(summaries, parameters, model)
-    for _ in range(2):
+    for _ in range(1):
         base = residuals(summaries, parameters, model)
         jacobian = []
         epsilon = 1e-5
@@ -90,7 +90,7 @@ def initial_starts(summaries: list[dict]) -> list[list[float]]:
         for run in summaries
     ]
     value = sorted(math.log(max(rate, 1e-30)) for rate in rates)[len(rates) // 2]
-    return [[value - 0.7, 30.0, 0.0, math.log(0.01)]]
+    return [[value - 0.7, 60.0, 0.0, math.log(0.01)]]
 
 def fit_model(summaries: list[dict], model: str) -> tuple[list[float], float]:
     best_parameters = None
