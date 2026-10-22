@@ -38,7 +38,7 @@ def reactor_modulus(conversion: float, run: dict, parameters: list[float], model
     """按活塞流设计方程计算 W/F_A0。"""
     if conversion <= 0.0:
         return 0.0
-    intervals = 24
+    intervals = 32
     step = conversion / intervals
     total = 0.0
     for index in range(intervals + 1):
