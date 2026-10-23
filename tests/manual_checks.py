@@ -146,13 +146,24 @@ def run_rule(rule: str) -> str:
         return "D7 PASS: image isolation and user separation match the contract"
     if rule == "E3":
         config = json.loads(read(SCORING))
-        check(len(config["gate_tests"]) == 2 and len(config["tests"]) == 9, "E3 case matrix")
-        return "E3 PASS: two gates and nine scored cases cover three independent groups"
+        gates = set(config["gate_tests"])
+        scored = set(config["tests"])
+        defined = set(re.findall(r"^def (test_\w+)", read(TESTS), re.M))
+        configured = {item.split("::", 1)[1] for item in gates | scored}
+        check(len(gates) == 7 and len(scored) == 9, "E3 case matrix")
+        check(not (gates & scored), "E3 gate and scored sets are disjoint")
+        check(configured == defined, "E3 scoring config matches test functions")
+        return "E3 PASS: seven gates and nine scored cases match the test suite"
     if rule == "E4":
         config = json.loads(read(SCORING))
-        total = math.fsum(float(value["weight"]) for value in config["tests"].values())
+        check(config.get("weight_policy") == "business_priority", "E4 business-priority policy")
+        weights = [float(value["weight"]) for value in config["tests"].values()]
+        check(all(0.0 < weight <= 1.0 for weight in weights), "E4 weights are normalized fractions")
+        check(all(str(value.get("rationale", "")).strip() for value in config["tests"].values()),
+              "E4 every weight has a business rationale")
+        total = math.fsum(weights)
         check(abs(total - 1.0) < 1e-12, "E4 weights sum to one")
-        return "E4 PASS: weights sum to 1.0 and numeric tolerances are documented"
+        return "E4 PASS: business_priority weights sum to 1.0 and each has a rationale"
     if rule == "E10":
         got = run_reference()
         check(set(got) == OUTPUT_FIELDS, "E10 exact key set")

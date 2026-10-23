@@ -28,6 +28,13 @@ on_signal() {
 trap finish EXIT
 trap on_signal INT TERM HUP
 
+# 评分策略必须显式声明为业务优先级，且计分权重已归一化为 1；否则不进入测试。
+if ! "$PY" -I /tests/score.py validate --config /tests/scoring.json \
+    --require-weight-policy business_priority > "$V/scoring-policy.txt" 2>&1; then
+    echo "INCOMPLETE: scoring.json 未声明 business_priority 或权重未归一化" > "$V/verification-status.txt"
+    exit 0
+fi
+
 # 结束候选残留进程，清空评分目录，把随包的 pytest 解到 root 私有目录（不联网、不装进镜像）。
 "$PY" -I /tests/score.py prepare --verifier-dir "$V" --private "$PRIV" --vendor /tests/vendor || exit 0
 

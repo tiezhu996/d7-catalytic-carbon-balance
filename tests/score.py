@@ -8,6 +8,8 @@
         结束候选残留进程，清空评分目录，校验并解压随包的 pytest 轮子到 root 私有目录。
     score.py reap
         pytest 结束后再结束一次候选残留进程（后台改写结果的进程）。
+    score.py validate --config scoring.json --require-weight-policy business_priority
+        校验评分策略、用例集合和归一化权重；不合法时退出码 2。
     score.py --config scoring.json --junit junit.xml --report-out R.json --reward-out reward.txt
         按 scoring.json 汇总：gate 测试有一个没过记 0；否则累加通过的计分测试权重。
         junit 里出现 error/skipped、用例集合与配置不一致时退出码 2，不写 reward。
@@ -28,6 +30,8 @@ import zipfile
 from pathlib import Path
 
 CANDIDATE_USER = "runner"
+WEIGHT_POLICY = "business_priority"
+WEIGHT_TOLERANCE = 1e-9
 
 
 # ---------- 清场 ----------
@@ -129,6 +133,75 @@ def prepare(verifier_dir: Path, private: Path, vendor: Path) -> int:
 
 # ---------- 加权汇总 ----------
 
+def _reject_duplicate_keys(pairs):
+    payload = {}
+    for key, value in pairs:
+        if key in payload:
+            raise ValueError(f"scoring config contains duplicate key: {key}")
+        payload[key] = value
+    return payload
+
+
+def load_config(config_path: Path):
+    """读取并校验业务优先级评分策略，返回 gate、归一化权重和策略名。"""
+    config = json.loads(
+        config_path.read_text(encoding="utf-8"),
+        object_pairs_hook=_reject_duplicate_keys,
+    )
+    if not isinstance(config, dict):
+        raise ValueError("scoring config must be a JSON object")
+    if config.get("schema_version") != 1:
+        raise ValueError("schema_version must be 1")
+    policy = config.get("weight_policy")
+    if policy != WEIGHT_POLICY:
+        raise ValueError("weight_policy is required and must use business_priority weighting")
+
+    gates = config.get("gate_tests")
+    tests = config.get("tests")
+    if not isinstance(gates, list) or not gates:
+        raise ValueError("gate_tests must be a non-empty list")
+    if not all(isinstance(item, str) and "::" in item for item in gates):
+        raise ValueError("gate_tests entries must be pytest node IDs")
+    if len(set(gates)) != len(gates):
+        raise ValueError("gate_tests must not contain duplicates")
+    if not isinstance(tests, dict) or not tests:
+        raise ValueError("tests must be a non-empty object")
+
+    weights = {}
+    for case_id, entry in tests.items():
+        if not isinstance(case_id, str) or "::" not in case_id:
+            raise ValueError(f"invalid pytest case ID: {case_id!r}")
+        if not isinstance(entry, dict):
+            raise ValueError(f"scored test entry must be an object: {case_id}")
+        weight = entry.get("weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+            raise ValueError(f"weight must be numeric: {case_id}")
+        weight = float(weight)
+        if not math.isfinite(weight) or weight <= 0.0 or weight > 1.0:
+            raise ValueError(f"weight must be in (0, 1]: {case_id}")
+        rationale = entry.get("rationale")
+        if not isinstance(rationale, str) or not rationale.strip():
+            raise ValueError(f"weight rationale is required: {case_id}")
+        weights[case_id] = weight
+
+    if set(gates) & set(weights):
+        raise ValueError("gate and scored test sets must be disjoint")
+    total = math.fsum(weights.values())
+    if abs(total - 1.0) > WEIGHT_TOLERANCE:
+        raise ValueError(f"scored-test weights must sum to 1, got {total:.12f}")
+    return list(gates), weights, policy
+
+
+def validate_config(config_path: Path, required_policy: str = WEIGHT_POLICY) -> int:
+    gates, weights, policy = load_config(config_path)
+    if policy != required_policy:
+        raise ValueError(f"weight_policy must be {required_policy}")
+    print(
+        f"scoring config valid: weight_policy={policy} gates={len(gates)} "
+        f"scored={len(weights)} weight_sum={math.fsum(weights.values()):.3f}"
+    )
+    return 0
+
 def case_id(node: ET.Element) -> str:
     """junit 的 classname/name 换回 pytest 节点 id：test_outputs.py::[Class::]test_name。"""
     parts = node.get("classname", "").split(".")
@@ -138,9 +211,7 @@ def case_id(node: ET.Element) -> str:
 
 
 def summarize(config_path: Path, junit: Path, report_out: Path, reward_out: Path) -> int:
-    config = json.loads(config_path.read_text(encoding="utf-8"))
-    gates = list(config["gate_tests"])
-    weights = {key: float(value["weight"]) for key, value in config["tests"].items()}
+    gates, weights, policy = load_config(config_path)
     outcomes = {}
     for node in ET.parse(junit).getroot().iter("testcase"):
         if node.find("error") is not None or node.find("skipped") is not None:
@@ -162,6 +233,8 @@ def summarize(config_path: Path, junit: Path, report_out: Path, reward_out: Path
     report = {
         "status": "COMPLETED",
         "reward": reward,
+        "weight_policy": policy,
+        "weight_sum": 1.0,
         "gate_passed": gate_passed,
         "passed": sorted(key for key, ok in outcomes.items() if ok),
         "failed": sorted(key for key, ok in outcomes.items() if not ok),
@@ -174,6 +247,16 @@ def summarize(config_path: Path, junit: Path, report_out: Path, reward_out: Path
 
 
 def main(argv):
+    if argv[:1] == ["validate"]:
+        parser = argparse.ArgumentParser(prog="score.py validate")
+        parser.add_argument("--config", required=True, type=Path)
+        parser.add_argument("--require-weight-policy", default=WEIGHT_POLICY)
+        args = parser.parse_args(argv[1:])
+        try:
+            return validate_config(args.config, args.require_weight_policy)
+        except (OSError, ValueError, KeyError) as exc:
+            print(f"incomplete: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return 2
     if argv[:1] == ["prepare"]:
         parser = argparse.ArgumentParser(prog="score.py prepare")
         parser.add_argument("--verifier-dir", required=True, type=Path)
